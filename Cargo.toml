@@ -1,0 +1,11 @@
+[package]
+name = "twitch_api"
+version = "0.1.0"
+authors = ["Isaac Lozano <109lozanoi@gmail.com>"]
+
+[dependencies]
+hyper = "0.10"
+hyper-native-tls = "0.2"
+serde = "0.8"
+serde_derive = "0.8"
+serde_json = "0.8"
