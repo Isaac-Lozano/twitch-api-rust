@@ -1,7 +1,7 @@
 #![feature(custom_attribute)]
 #[macro_use]
 extern crate hyper;
-extern crate hyper_native_tls;
+extern crate hyper_rustls;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
@@ -10,19 +10,22 @@ pub mod model;
 
 use model::user::{UserId, Users};
 use model::badges::BadgeSets;
+use model::emoticon::EmoticonSets;
 
 use hyper::client::{Client, Response};
 use hyper::net::HttpsConnector;
 use hyper::Url;
 use hyper::header::{Headers, Accept, Authorization, qitem};
 use hyper::mime::{Mime, TopLevel, SubLevel};
-use hyper_native_tls::NativeTlsClient;
+use hyper_rustls::TlsClient;
 
 use std::fmt;
 use std::error::Error;
+use std::io::Read;
 
 const TWITCH_API_BASE_URL: &'static str = "https://api.twitch.tv/kraken/";
 const TWITCH_BADGE_API_BASE_URL: &'static str = "https://badges.twitch.tv/v1/";
+const TWITCH_EMOTE_API_BASE_URL: &'static str = "https://static-cdn.jtvnw.net/emoticons/v1/";
 const TWITCH_REQUEST_MIME_SUBLEVEL: &'static str = "vnd.twitchtv.v5+json";
 
 header!{(ClientId, "client-id") => [String]}
@@ -35,15 +38,24 @@ pub struct TwitchApi
 
 impl TwitchApi
 {
-    pub fn new(client_id: &str) -> TwitchApiResult<TwitchApi>
+    pub fn new(client_id: &str) -> TwitchApi
     {
-        let ssl = NativeTlsClient::new().unwrap();
+        let ssl = TlsClient::new();
         let connector = HttpsConnector::new(ssl);
-        Ok(TwitchApi
+        TwitchApi
         {
             client: Client::with_connector(connector),
             client_id: client_id.into(),
-        })
+        }
+    }
+
+    pub fn make_raw_request(&self, path: &str) -> TwitchApiResult<Response>
+    {
+        let url = try!(Url::parse(path).or(Err(TwitchApiError::Unknown)));
+        self.client
+            .get(url)
+            .send()
+            .or(Err(TwitchApiError::Unknown))
     }
 
     fn make_twitch_api_request(&self, path: &str, params: Option<&str>, token: Option<&str>) -> TwitchApiResult<Response>
@@ -91,7 +103,7 @@ impl TwitchApi
         Ok(serde_json::from_reader(resp).unwrap())
     }
 
-    pub fn get_badges(&self) -> TwitchApiResult<BadgeSets>
+    pub fn get_global_badges(&self) -> TwitchApiResult<BadgeSets>
     {
         let path = "badges/global/display";
         let resp = self.make_badge_api_request(path).unwrap();
@@ -100,10 +112,39 @@ impl TwitchApi
 
     pub fn get_subscriber_badges(&self, user: UserId) -> TwitchApiResult<BadgeSets>
     {
-        let UserId(id) = user;
+        let id = user.0;
         let path = format!("badges/channels/{}/display", id);
         let resp = self.make_badge_api_request(&path).unwrap();
         Ok(serde_json::from_reader(resp).unwrap())
+    }
+
+    pub fn get_emoticons(&self, emotesets: Vec<u64>) -> TwitchApiResult<EmoticonSets>
+    {
+        let path = format!("chat/emoticon_images");
+        let params = format!("emotesets={}", emotesets.iter()
+                                                      .map(|n| n.to_string())
+                                                      .collect::<Vec<_>>()
+                                                      .join(",".into()));
+        let resp = self.make_twitch_api_request(&path, Some(&params), None).unwrap();
+        Ok(serde_json::from_reader(resp).unwrap())
+    }
+
+    pub fn get_emoticon_image(&self, emote_id: u64, size: u32) -> TwitchApiResult<Vec<u8>>
+    {
+        assert!(size <= 3);
+        let path = format!("{}/{}.0", emote_id, size);
+
+        let mut url = Url::parse(TWITCH_EMOTE_API_BASE_URL).unwrap();
+        url = url.join(&path).unwrap();
+
+        let mut buf = Vec::new();
+        self.client
+            .get(url)
+            .send()
+            .unwrap()
+            .read_to_end(&mut buf)
+            .unwrap();
+        Ok(buf)
     }
 }
 

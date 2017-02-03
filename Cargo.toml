@@ -5,7 +5,7 @@ authors = ["Isaac Lozano <109lozanoi@gmail.com>"]
 
 [dependencies]
 hyper = "0.10"
-hyper-native-tls = "0.2"
+hyper-rustls = "0.3"
 serde = "0.8"
 serde_derive = "0.8"
 serde_json = "0.8"

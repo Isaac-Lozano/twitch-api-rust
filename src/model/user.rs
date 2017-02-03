@@ -20,5 +20,5 @@ pub struct Users
     pub users: Vec<User>,
 }
 
-#[derive(Clone,Deserialize,Debug)]
+#[derive(Copy,Clone,Deserialize,Debug)]
 pub struct UserId(pub u64);
